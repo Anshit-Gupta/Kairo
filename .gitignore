@@ -1,1 +1,4 @@
 *.txt
+/data/
+/kairo.log
+
