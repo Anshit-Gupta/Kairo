@@ -115,7 +115,7 @@ func (s *Store) Delete(key string) error {
 	}
 	//now that we confimed the log file is updated
 
-	delete(s.data, key)
+	delete(s.data, key) 
 	return nil
 }
 
