@@ -124,3 +124,19 @@ func (s *Store) Delete(key string) error {
 func (s *Store) Close() error {
 	return s.logFile.Close()
 }
+
+
+//operations for logreplay 
+func (s* Store)logReplayOperationHelper(entry logEntry)error{
+	if entry.Op == "SET" {
+				s.data[entry.Key] = entry.Value
+			} else if entry.Op == "DELETE" {
+				//Delete
+				delete(s.data, entry.Key)
+			} else {
+				//unknown operation or typo
+				return fmt.Errorf("Unknown Operation detected %q", entry.Op)
+			}
+
+			return nil
+}
