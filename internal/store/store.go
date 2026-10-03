@@ -83,6 +83,14 @@ func (s *Store) Set(key, value string) error {
 		return fmt.Errorf("short write")
 	}
 
+
+	//sync -> durability 
+	err = s.logFile.Sync()
+	if err!=nil{
+		fmt.Println("Error in Sync")
+		return fmt.Errorf("Error in Sync : %w",err)
+	}
+
 	//make sure the log is update and only then we update in-memory map
 
 	s.data[key] = value
@@ -114,7 +122,15 @@ func (s *Store) Delete(key string) error {
 		return fmt.Errorf("short Write")
 	}
 	//now that we confimed the log file is updated
+    
+	//sync before updating the map 
+	err = s.logFile.Sync()
+	if err!=nil{
+		fmt.Println("Error in Sync")
+		return fmt.Errorf("Error in Sync : %w",err)
+	}
 
+   
 	delete(s.data, key) 
 	return nil
 }

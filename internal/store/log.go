@@ -15,17 +15,17 @@ type logEntry struct {
 
 func (s *Store) logReplay(path string) error {
 	//open file in read
-	File, err := os.Open(path)
+	file, err := os.Open(path)
 
 	if err != nil {
 		fmt.Println("error in opening file")
 		return err
 	}
 	//gotta close the file as well
-	defer File.Close()
+	defer file.Close()
 
 	//read line by line and update the map
-	scanner := bufio.NewScanner(File)
+	scanner := bufio.NewScanner(file)
 
 	//insterad of using a for loop , we are doing each log manually
 	if !scanner.Scan() {
@@ -41,7 +41,7 @@ func (s *Store) logReplay(path string) error {
 			//convert the json into go using json.Unmarshal
 			err := json.Unmarshal([]byte(currentLine), &entry) //daya,desitination
 			if err != nil {
-				fmt.Println("error in json->go")
+				fmt.Printf("error in json->go: %q\n", currentLine)
 				return err
 			}
 
@@ -55,6 +55,7 @@ func (s *Store) logReplay(path string) error {
 			//here we know that the currentLine is the last one
 			var entry logEntry
 			if err := json.Unmarshal([]byte(currentLine), &entry); err != nil {
+				 fmt.Printf("error in final json: %q\n", currentLine)
 				break
 			}
 
