@@ -2,9 +2,90 @@ package store
 
 import (
 	"os"
+	
 	"path/filepath"
 	"testing"
 )
+
+
+ //Compaction must not change the logical state, and the compacted log must still be recoverable.
+
+func TestCompaction(t *testing.T){
+	dir:=t.TempDir()
+	path:= filepath.Join(dir,"Kairo.log")
+
+	s,err := NewStore(path)
+
+	if err!=nil{
+		t.Fatal(err)
+	}
+     
+	// Create some history.
+	if err := s.Set("name", "Anshit"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Set("language", "Go"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Set("language", "C++"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Delete("name"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Set("name", "Ansh"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Set("language", "Rust"); err != nil {
+		t.Fatal(err)
+	}
+
+	 //compact the log 
+
+	 if err := s.Compact();err!=nil{
+		t.Fatal(err)
+	 }
+
+	 // Verify current in-memory state.
+	value, exists := s.Get("name")
+	if !exists || value != "Ansh" {
+		t.Fatalf("expected name=Ansh, got %q", value)
+	}
+
+	value, exists = s.Get("language")
+	if !exists || value != "Rust" {
+		t.Fatalf("expected language=Rust, got %q", value)
+	}
+
+	//close and reopen to test recovery from compacted log 
+
+	if err := s.Close();err!=nil{
+		t.Fatal(err)
+	}
+
+	s, err = NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	value, exists = s.Get("name")
+	if !exists || value != "Ansh" {
+		t.Fatalf("after recovery: expected name=Ansh, got %q", value)
+	}
+
+	value, exists = s.Get("language")
+	if !exists || value != "Rust" {
+		t.Fatalf("after recovery: expected language=Rust, got %q", value)
+	}
+
+
+}
 
 func TestRecoveryWithIncompleteMiddleEntry(t *testing.T) {
 	logContent := `{"Op":"SET","Key":"name","Value":"Anshit"}
@@ -23,6 +104,61 @@ func TestRecoveryWithIncompleteMiddleEntry(t *testing.T) {
 		t.Fatalf("expected recovery to fail")
 	}
 
+}
+
+//Deleted keys don't come back
+func TestCompactionRemovesDeletedKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kairo.log")
+
+	s, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if err := s.Set("name", "Anshit"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Set("language", "Go"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Delete("name"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Compact(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, exists := s.Get("name"); exists {
+		t.Fatal("expected deleted key to remain deleted after compaction")
+	}
+
+	if value, exists := s.Get("language"); !exists || value != "Go" {
+		t.Fatalf("expected language=Go, got %q", value)
+	}
+
+	// Make sure recovery also preserves the deletion.
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if _, exists := s.Get("name"); exists {
+		t.Fatal("deleted key reappeared after recovery")
+	}
+
+	if value, exists := s.Get("language"); !exists || value != "Go" {
+		t.Fatalf("after recovery: expected language=Go, got %q", value)
+	}
 }
 
 func TestRecoveryWithIncompleteFinalEntry(t *testing.T) {

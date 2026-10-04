@@ -2,192 +2,100 @@
 
 > A persistent, concurrent key-value store built from scratch in Go.
 
-Kairo is a small storage engine built to explore the fundamentals behind persistent key-value databases.
+Kairo is a lightweight storage engine built to explore the fundamentals of
+persistent key-value databases.
 
-It started as an in-memory `map[string]string` and evolved into a store with concurrency control, append-only persistence, crash recovery, and durable writes.
+It started as an in-memory map[string]string and evolved into a store with concurrency control, append-only persistence, crash recovery, durable writes, and log compaction.
 
 The project is intentionally small, with a focus on understanding the systems behind the abstractions.
-
----
 
 ## Features
 
 - In-memory key-value storage
 - `Set`, `Get`, and `Delete` operations
 - Concurrent access with `sync.RWMutex`
-- Append-only JSON log for persistence
-- Automatic state recovery on startup
-- Detection of corrupted middle log entries
-- Handling of incomplete final log entries
-- Durable writes using `File.Sync()`
+- Append-only JSON log persistence
+- Automatic recovery after restart
+- Durable writes with `File.Sync()`
+- Log compaction
 - Configurable log file path
-- Tests for persistence and recovery
-- Race-detector compatible
-
----
 
 ## Architecture
 
 ```text
-                    Kairo
-                      │
-             ┌────────┴────────┐
-             │                 │
-        In-Memory Store     Append-Only Log
-       map[string]string          │
-             │                    │
-        Get / Set / Delete    Persistence
-                                  │
-                              Recovery
+                           Kairo
+                             │
+                ┌────────────┴────────────┐
+                │                         │
+         In-Memory Store            Append-Only Log
+        map[string]string                  │
+                │                          │
+        Get / Set / Delete             Persistence
+                                           │
+                                       Recovery
+                                           │
+                                      Compaction
 ```
 
-Writes follow:
+### Write flow
 
 ```text
-Operation → JSON Log → Sync → In-Memory State
+Operation → Append JSON Record → Sync Log → Update Memory
 ```
 
-On startup:
+### Recovery flow
 
 ```text
-Log → Replay → Reconstructed State
+Log File → Replay Records → Reconstructed In-Memory State
 ```
 
----
-
-## Storage Format
-
-Operations are stored as newline-delimited JSON:
-
-```json
-{"Op":"SET","Key":"name","Value":"Anshit"}
-{"Op":"SET","Key":"language","Value":"Go"}
-{"Op":"DELETE","Key":"language"}
-```
-
-The log is replayed on startup to reconstruct the current in-memory state.
-
----
-
-## Crash Recovery
-
-Kairo distinguishes between corrupted log entries and an incomplete final write.
-
-If the final record is truncated because of a crash:
-
-```json
-{"Op":"SET","Key":"city","Value":
-```
-
-the incomplete final entry is ignored during recovery.
-
-A malformed entry in the middle of the log causes recovery to fail rather than silently skipping potentially lost operations.
-
----
-
-## Durability
-
-Every successful mutation follows:
+### Compaction flow
 
 ```text
-Write → Sync → Update Memory
+Current State → Temporary Log → Sync → Replace Old Log
 ```
-
-`File.Sync()` is used to provide a stronger durability guarantee before the operation is considered successful.
-
-The current implementation synchronizes every mutation. Performance and synchronization strategies are being explored through benchmarks.
-
----
-
-## Project Structure
-
-```text
-kairo/
-├── cmd/
-│   └── kairo/
-│       └── main.go
-├── internal/
-│   └── store/
-│       ├── store.go
-│       ├── log.go
-│       ├── store_test.go
-│       └── store_bench_test.go
-├── data/
-├── go.mod
-└── README.md
-```
-
----
 
 ## Usage
 
 ```go
-package main
+s, err := store.NewStore("./data/kairo.log")
+if err != nil {
+	log.Fatal(err)
+}
+defer s.Close()
 
-import (
-	"fmt"
+if err := s.Set("name", "Kairo"); err != nil {
+	log.Fatal(err)
+}
 
-	"github.com/Anshit-Gupta/kairo/internal/store"
-)
-
-func main() {
-	s, err := store.NewStore("./data/kairo.log")
-	if err != nil {
-		panic(err)
-	}
-	defer s.Close()
-
-	if err := s.Set("name", "Anshit"); err != nil {
-		panic(err)
-	}
-
-	value, exists := s.Get("name")
-	if exists {
-		fmt.Println(value)
-	}
-
-	if err := s.Delete("name"); err != nil {
-		panic(err)
-	}
+value, ok := s.Get("name")
+if ok {
+	fmt.Println(value)
 }
 ```
 
----
+## Project Structure
 
-## Running
+```text
+cmd/kairo/          Application entry point
+internal/store/     Storage engine implementation and tests
+data/               Local data directory
+```
+
+## Development
 
 ```sh
+# Run
 go run ./cmd/kairo
-```
 
-### Tests
-
-```sh
+# Test
 go test ./...
-```
 
-### Race Detector
-
-```sh
+# Test with the race detector
 go test -race ./...
+
+# Run benchmarks
+go test -run=^$ -bench=. -benchmem ./internal/store
 ```
 
-### Benchmarks
-
-```sh
-go test -bench=. ./internal/store
-```
-
----
-
-
-## Why Kairo?
-
-Kairo is primarily a learning project.
-
-The goal is to understand storage systems by building one instead of treating databases as black boxes.
-
-The project focuses on going deeper into a smaller system rather than adding a large number of unrelated features.
-
----
-
+This project is currently intended for learning and experimentation.

@@ -18,11 +18,10 @@ type Store struct {
 
 // constructor
 func NewStore(path string) (*Store, error) {
-	//if /data does not exist ->create data dir , if exist -> do nothing  
-	if err := os.MkdirAll(filepath.Dir(path),0755); err!=nil{
-		return nil,err
+	//if /data does not exist ->create data dir , if exist -> do nothing
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
 	}
-
 
 	//open or create Kairo .log
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0600)
@@ -83,12 +82,11 @@ func (s *Store) Set(key, value string) error {
 		return fmt.Errorf("short write")
 	}
 
-
-	//sync -> durability 
+	//sync -> durability
 	err = s.logFile.Sync()
-	if err!=nil{
+	if err != nil {
 		fmt.Println("Error in Sync")
-		return fmt.Errorf("Error in Sync : %w",err)
+		return fmt.Errorf("Error in Sync : %w", err)
 	}
 
 	//make sure the log is update and only then we update in-memory map
@@ -122,16 +120,15 @@ func (s *Store) Delete(key string) error {
 		return fmt.Errorf("short Write")
 	}
 	//now that we confimed the log file is updated
-    
-	//sync before updating the map 
+
+	//sync before updating the map
 	err = s.logFile.Sync()
-	if err!=nil{
+	if err != nil {
 		fmt.Println("Error in Sync")
-		return fmt.Errorf("Error in Sync : %w",err)
+		return fmt.Errorf("Error in Sync : %w", err)
 	}
 
-   
-	delete(s.data, key) 
+	delete(s.data, key)
 	return nil
 }
 
@@ -141,18 +138,111 @@ func (s *Store) Close() error {
 	return s.logFile.Close()
 }
 
-
-//operations for logreplay 
-func (s* Store)logReplayOperationHelper(entry logEntry)error{
+// operations for logreplay
+func (s *Store) logReplayOperationHelper(entry logEntry) error {
 	if entry.Op == "SET" {
-				s.data[entry.Key] = entry.Value
-			} else if entry.Op == "DELETE" {
-				//Delete
-				delete(s.data, entry.Key)
-			} else {
-				//unknown operation or typo
-				return fmt.Errorf("Unknown Operation detected %q", entry.Op)
-			}
+		s.data[entry.Key] = entry.Value
+	} else if entry.Op == "DELETE" {
+		//Delete
+		delete(s.data, entry.Key)
+	} else {
+		//unknown operation or typo
+		return fmt.Errorf("Unknown Operation detected %q", entry.Op)
+	}
 
-			return nil
+	return nil
+}
+
+//Log compaction
+
+func (s *Store) Compact() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tempPath := s.logFile.Name() + ".tmp"
+	logPath := s.logFile.Name()
+
+	tempFile, err := os.OpenFile(
+		tempPath,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		0600,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Write current state to temporary log
+	for key, value := range s.data {
+
+		entry := logEntry{
+			Op:    "SET",
+			Key:   key,
+			Value: value,
+		}
+
+		data, err := json.Marshal(entry)
+		if err != nil {
+			tempFile.Close()
+			return err
+		}
+
+		data = append(data, '\n')
+
+		byteCount, err := tempFile.Write(data)
+		if err != nil {
+			tempFile.Close()
+			return err
+		}
+
+		if byteCount != len(data) {
+			tempFile.Close()
+			return fmt.Errorf("short write")
+		}
+	}
+
+	// Make sure the temporary log is durable
+	if err := tempFile.Sync(); err != nil {
+		tempFile.Close()
+		return err
+	}
+
+	// Close temp file before replacing old log
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+
+	// Close the old log
+	if err := s.logFile.Close(); err != nil {
+		return err
+	}
+
+	// Replace old log with compacted log
+	if err := os.Rename(tempPath, logPath); err != nil {
+		// Try to restore a usable file handle
+		file, reopenErr := os.OpenFile(
+			logPath,
+			os.O_CREATE|os.O_APPEND|os.O_RDWR,
+			0600,
+		)
+
+		if reopenErr == nil {
+			s.logFile = file
+		}
+
+		return err
+	}
+
+	// Open the new compacted log
+	file, err := os.OpenFile(
+		logPath,
+		os.O_CREATE|os.O_APPEND|os.O_RDWR,
+		0600,
+	)
+	if err != nil {
+		return err
+	}
+
+	s.logFile = file
+
+	return nil
 }

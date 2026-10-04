@@ -30,3 +30,33 @@ func BenchmarkSet(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkGet(b *testing.B) {
+	//create temp store
+	dir := b.TempDir()
+	path := filepath.Join(dir, "BenchmarkGet.log")
+
+	s, err := NewStore(path)
+
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer s.Close()
+
+
+	if err:=s.Set("Name","Anshit");err!=nil{
+		b.Fatal(err)
+	}
+
+	//reset timer
+	b.ResetTimer()
+
+	//call set b.N times
+	for i := 0; i < b.N; i++ {
+		if _,exsits := s.Get("Name");!exsits{
+			b.Fatal(err)
+		}
+	}
+}
+
