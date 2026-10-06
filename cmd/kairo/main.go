@@ -23,7 +23,7 @@ func main() {
     dataPath = "./data/kairo.log"
    }
 
-	s, err := store.NewStore("./data/kairo.log")
+	s, err := store.NewStore(dataPath)
 	if err != nil {
 		panic(err)
 	}
