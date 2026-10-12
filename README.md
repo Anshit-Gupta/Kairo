@@ -2,6 +2,8 @@
 
 > A persistent, concurrent key-value store built from scratch in Go.
 
+<img src="kairo.png" alt="Kairo" width="400">
+
 Kairo is a lightweight storage engine built to explore the fundamentals of
 persistent key-value databases.
 
